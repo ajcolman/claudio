@@ -11,7 +11,8 @@ case "${1:-}" in
   gui|desktop) exec python3 "$PROJECT_DIR/desktop.py" ;;
   web) exec python3 "$PROJECT_DIR/desktop.py" --web ;;
   '')
-    if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
+    # macOS never sets DISPLAY; its window server is reachable outside SSH sessions.
+    if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ] || { [ "$(uname -s)" = Darwin ] && [ -z "$SSH_CONNECTION" ]; }; then
       exec python3 "$PROJECT_DIR/desktop.py"
     else
       exec python3 "$PROJECT_DIR/server.py"
