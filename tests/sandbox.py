@@ -12,6 +12,19 @@ from pathlib import Path
 from unittest.mock import patch
 
 NOW = 1_700_000_000
+# A throwaway self-signed root (its key was discarded), standing in for the roots macOS trusts.
+TEST_ROOT = '''-----BEGIN CERTIFICATE-----
+MIIBjzCCATWgAwIBAgIUa8s62gAKeidFII0k1IbGdeTTYcAwCgYIKoZIzj0EAwIw
+HDEaMBgGA1UEAwwRQ2xhdWRpbyBUZXN0IFJvb3QwIBcNMjYxMDExMTU0NjI2WhgP
+MjEyNjA5MTcxNTQ2MjZaMBwxGjAYBgNVBAMMEUNsYXVkaW8gVGVzdCBSb290MFkw
+EwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEei7IYanorf/gm6XSPAjfGLtTxgpWvB/m
+7si84qWjsEL6WI0z77wHcZHjyvCpOiyjHyz78hh6wls6sBxNQClFt6NTMFEwHQYD
+VR0OBBYEFO0PQD5UkM1tjYYIzUUFZIcbUK0dMB8GA1UdIwQYMBaAFO0PQD5UkM1t
+jYYIzUUFZIcbUK0dMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIh
+AKfrfHUUOYm7hE15SutptDS3SEvlsBtoyJOm74RULwpnAiASnlm4qf+W0SFhKaV4
+yE9AZJajq1lTYQQUoAPxQTs50g==
+-----END CERTIFICATE-----
+'''
 
 
 def oauth_credentials(refresh='refresh-1', access='access-1', expires_in=3600, now=NOW, **extra):
@@ -59,10 +72,13 @@ class FakeKeychain:
         self.items = {}
         self.locked = False
         self.calls = []
+        self.roots = ''
 
     def run(self, argv, input=None, **_):
         arguments = shlex.split(input) if argv[1:] == ['-i'] else argv[1:]
         self.calls.append(arguments[0])
+        if arguments[0] == 'find-certificate':
+            return subprocess.CompletedProcess(argv, 0, self.roots, '')
         if self.locked:
             return subprocess.CompletedProcess(argv, 36, '', 'User interaction is not allowed.')
         options, position = {}, 1
@@ -100,8 +116,10 @@ class FakeNetwork:
         self.usage = {}     # access token -> answer, or an exception to raise
         self.profiles = {}  # access token -> answer
         self.requests = []
+        self.contexts = []  # TLS settings each request was made with
 
-    def urlopen(self, request, timeout=None):
+    def urlopen(self, request, timeout=None, context=None):
+        self.contexts.append(context)
         url = request.full_url
         headers = {name.lower(): value for name, value in request.header_items()}
         token = headers.get('authorization', '')[len('Bearer '):]
@@ -126,9 +144,10 @@ class FakeNetwork:
 def use_network(test):
     from accounts import oauth
     fake = FakeNetwork()
-    patcher = patch.object(oauth.urllib.request, 'urlopen', fake.urlopen)
-    patcher.start()
-    test.addCleanup(patcher.stop)
+    # The TLS settings are built once per process; every test starts without them.
+    for patcher in (patch.object(oauth.urllib.request, 'urlopen', fake.urlopen), patch.object(oauth, '_context', None)):
+        patcher.start()
+        test.addCleanup(patcher.stop)
     return fake
 
 

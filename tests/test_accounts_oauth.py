@@ -3,7 +3,7 @@ import unittest
 import urllib.error
 
 from accounts import oauth
-from sandbox import oauth_credentials, quota, use_network
+from sandbox import TEST_ROOT, oauth_credentials, quota, use_macos, use_network
 
 NOW = 1_700_000_000
 
@@ -87,6 +87,46 @@ class UsageTests(unittest.TestCase):
         self.network.profiles['access-1'] = {'account': {'email': 'ana@example.com'}}
         self.assertIsNone(oauth.profile('access-1'))
         self.assertIsNone(oauth.profile('rejected-token'))
+
+
+class CertificateTests(unittest.TestCase):
+    """python.org builds for macOS ship without root certificates; the system's own are used."""
+
+    def setUp(self):
+        self.network = use_network(self)
+        self.network.usage['access-1'] = quota(1, 2)
+
+    def trusted(self):
+        return [dict(pair[0] for pair in certificate['subject'])['commonName'] for certificate in self.network.contexts[-1].get_ca_certs()]
+
+    def test_macos_requests_trust_the_roots_of_the_system(self):
+        use_macos(self).roots = TEST_ROOT
+        oauth.usage('access-1')
+        self.assertIn('Claudio Test Root', self.trusted())
+
+    def test_every_kind_of_request_uses_the_same_trust(self):
+        keychain = use_macos(self)
+        keychain.roots = TEST_ROOT
+        oauth.usage('access-1')
+        oauth.profile('access-1')
+        oauth.refresh(oauth_credentials())
+        self.assertEqual(len(self.network.contexts), 3)
+        self.assertTrue(all(context is self.network.contexts[0] for context in self.network.contexts))
+        self.assertEqual(keychain.calls.count('find-certificate'), 1)
+
+    def test_unreadable_system_roots_do_not_stop_the_request(self):
+        for roots in ('', 'not a certificate', '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n'):
+            with self.subTest(roots=roots):
+                oauth._context = None
+                use_macos(self).roots = roots
+                self.assertEqual(oauth.usage('access-1'), quota(1, 2))
+                self.assertNotIn('Claudio Test Root', self.trusted())
+
+    def test_other_systems_keep_the_certificates_of_python(self):
+        from unittest.mock import patch
+        with patch.object(oauth.keychain, 'system_roots', side_effect=AssertionError('solo en macOS')):
+            self.assertEqual(oauth.usage('access-1'), quota(1, 2))
+        self.assertIsNotNone(self.network.contexts[-1])
 
 
 if __name__ == '__main__':

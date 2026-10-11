@@ -1,10 +1,12 @@
 """Renovación de tokens y consulta de cuotas contra los servicios de Anthropic."""
 import json
+import ssl
+import sys
 import time
 import urllib.error
 import urllib.request
 
-from . import credentials
+from . import credentials, keychain
 
 TOKEN_URL = 'https://platform.claude.com/v1/oauth/token'
 USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
@@ -14,6 +16,7 @@ CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
 BETA = 'oauth-2025-04-20'
 # Same margin Claude Code uses before it renews a token on its own.
 EXPIRY_MARGIN = 5 * 60
+_context = None
 
 
 class ServiceError(OSError):
@@ -31,6 +34,24 @@ def expired(stored, now=None):
     return (time.time() if now is None else now) + EXPIRY_MARGIN >= expires / 1000
 
 
+def _tls():
+    """TLS settings shared by every request, built once."""
+    global _context
+    if _context is None:
+        context = ssl.create_default_context()
+        if sys.platform == 'darwin':
+            # The python.org builds bring their own OpenSSL without root certificates until an
+            # extra installer step is run. The roots macOS itself trusts are always there.
+            roots = keychain.system_roots()
+            if roots.strip():
+                try:
+                    context.load_verify_locations(cadata=roots)
+                except (ssl.SSLError, ValueError):
+                    pass
+        _context = context
+    return _context
+
+
 def _request(url, token=None, body=None, timeout=5.0, beta=False):
     headers = {'Content-Type': 'application/json', 'User-Agent': 'claudio/1.0'}
     if token:
@@ -39,7 +60,7 @@ def _request(url, token=None, body=None, timeout=5.0, beta=False):
         headers['anthropic-beta'] = BETA
     request = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode('utf-8'), headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout, context=_tls()) as response:
             return json.loads(response.read().decode('utf-8'))
     except urllib.error.HTTPError as error:
         with error:

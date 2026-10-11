@@ -37,6 +37,14 @@ def _failure(result):
     return KeychainError(result.stderr.strip() or f'security terminó con código {result.returncode}.')
 
 
+def system_roots():
+    """Root certificates macOS trusts, as PEM text; '' when they cannot be read."""
+    try:
+        return _run(['find-certificate', '-a', '-p', '/System/Library/Keychains/SystemRootCertificates.keychain']).stdout
+    except KeychainError:
+        return ''
+
+
 def read(service, account=None):
     """Return the stored value, or None when the item does not exist."""
     result = _run(['find-generic-password', '-a', account or account_name(), '-w', '-s', service])
