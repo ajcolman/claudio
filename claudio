@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Resolve the installed symlink before looking for the desktop application.
+LAUNCHER_PATH="${BASH_SOURCE[0]}"
+while [ -L "$LAUNCHER_PATH" ]; do
+  LAUNCHER_DIR="$(cd -P "$(dirname "$LAUNCHER_PATH")" && pwd)"
+  LAUNCHER_PATH="$(readlink "$LAUNCHER_PATH")"
+  [[ "$LAUNCHER_PATH" != /* ]] && LAUNCHER_PATH="$LAUNCHER_DIR/$LAUNCHER_PATH"
+done
+PROJECT_DIR="$(cd -P "$(dirname "$LAUNCHER_PATH")" && pwd)"
+case "${1:-}" in
+  gui|desktop) exec python3 "$PROJECT_DIR/desktop.py" ;;
+  web) exec python3 "$PROJECT_DIR/desktop.py" --web ;;
+  '')
+    if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
+      exec python3 "$PROJECT_DIR/desktop.py"
+    else
+      exec python3 "$PROJECT_DIR/server.py"
+    fi ;;
+  *) exec cswap "$@" ;;
+esac

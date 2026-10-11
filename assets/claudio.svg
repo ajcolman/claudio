@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <title>Claudio</title>
+  <desc>Una C abierta con dos conexiones: continuidad entre cuentas.</desc>
+  <rect x="2" y="2" width="124" height="124" rx="34" fill="#D2E9A5"/>
+  <path d="M85 35A36 36 0 1 0 85 93" stroke="#253018" stroke-width="16" stroke-linecap="round"/>
+  <path d="M63 64h30" stroke="#253018" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="96" cy="38" r="9" fill="#253018"/>
+  <circle cx="96" cy="90" r="9" fill="#253018"/>
+</svg>

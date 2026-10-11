@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Claudio · Tu espacio de trabajo</title>
+    <link rel="icon" href="/assets/claudio.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Saltar al contenido</a>
+    <header class="topbar">
+      <a class="brand" href="#"
+        ><img
+          class="brand-mark"
+          src="/assets/claudio.svg"
+          alt=""
+          width="40"
+          height="40"
+        /><span
+          >claudio<span class="brand-caption">TU ESPACIO DE TRABAJO</span></span
+        ></a
+      >
+      <nav aria-label="Navegación principal">
+        <a href="#accounts">Cuentas</a><a href="#projects">Proyectos</a>
+      </nav>
+      <div class="header-actions">
+        <button
+          id="theme-button"
+          class="button subtle"
+          title="Cambiar tema"
+          aria-label="Cambiar tema"
+        >
+          ◐</button
+        ><button id="refresh-button" class="button subtle">
+          ↻ <span>Actualizar</span></button
+        ><button class="button primary" data-action="link">
+          ＋ Vincular cuenta
+        </button>
+      </div>
+    </header>
+    <main id="main" class="page">
+      <section class="page-heading">
+        <div>
+          <p class="eyebrow">PANEL GENERAL</p>
+          <h1>Todo listo para continuar.</h1>
+          <p class="muted">
+            Tus cuentas, tu consumo y tus proyectos. En un solo lugar.
+          </p>
+        </div>
+        <div class="sync-status" role="status">
+          <span id="connection-dot" class="status-dot"></span
+          ><span id="connection-text">Conectando…</span>
+        </div>
+      </section>
+      <div id="connection-error" class="notice error" role="alert" hidden></div>
+      <section class="overview" aria-label="Resumen">
+        <div>
+          <span>Cuentas vinculadas</span><strong id="stat-accounts">—</strong>
+        </div>
+        <div>
+          <span>Cuentas en rotación</span><strong id="stat-enabled">—</strong>
+        </div>
+        <div>
+          <span>Consumo alto · ≥ 90 %</span><strong id="stat-warning">—</strong>
+        </div>
+        <div>
+          <span>Proyectos locales</span><strong id="stat-projects">—</strong>
+        </div>
+      </section>
+      <div class="workspace-grid">
+        <section class="panel active-panel" aria-labelledby="active-title">
+          <div class="section-top">
+            <p class="eyebrow" id="active-title">CUENTA ACTIVA</p>
+            <span id="active-badge" class="badge">Detectando</span>
+          </div>
+          <div id="active-content" class="active-content">
+            <div class="skeleton"></div>
+            <div class="skeleton short"></div>
+          </div>
+          <div class="panel-footer">
+            <button
+              class="button primary"
+              data-action="terminal"
+              data-mode="resume"
+            >
+              ↗ Reanudar sesión</button
+            ><button class="button" data-action="terminal" data-mode="new">
+              ＋ Nueva sesión</button
+            ><button
+              id="register-active"
+              class="button subtle"
+              data-action="link"
+              hidden
+            >
+              Registrar cuenta
+            </button>
+          </div>
+        </section>
+        <section class="panel auto-panel" aria-labelledby="auto-title">
+          <div class="section-top">
+            <h2 id="auto-title">Rotación automática</h2>
+            <span id="auto-badge" class="badge">Inactiva</span>
+          </div>
+          <p class="muted small">
+            Cambia de cuenta al alcanzar el consumo que elijas.
+          </p>
+          <label class="range-label" for="threshold-slider"
+            >Umbral de consumo
+            <output id="threshold-value" for="threshold-slider"
+              >90 %</output
+            ></label
+          ><input
+            type="range"
+            id="threshold-slider"
+            min="70"
+            max="98"
+            step="1"
+            value="90"
+          />
+          <div class="range-ticks"><span>70 %</span><span>98 %</span></div>
+          <label for="auto-strategy">Estrategia</label
+          ><select id="auto-strategy">
+            <option value="best">Mayor cuota disponible</option>
+            <option value="consume-first">Consumir la que vence antes</option>
+          </select>
+          <p id="auto-help" class="muted small">
+            Configura el umbral y activa la rotación.
+          </p>
+          <button id="auto-button" class="button full">Activar rotación</button>
+        </section>
+      </div>
+      <section id="accounts" class="section" aria-labelledby="accounts-title">
+        <div class="section-top">
+          <div>
+            <p class="eyebrow">TUS CONEXIONES</p>
+            <h2 id="accounts-title">
+              Cuentas vinculadas
+              <span id="accounts-count" class="count">0</span>
+            </h2>
+          </div>
+          <div class="quick-actions">
+            <button
+              class="button"
+              data-action="quick-switch"
+              data-strategy="best"
+            >
+              ↗ Usar mejor cuota</button
+            ><button
+              class="button subtle"
+              data-action="quick-switch"
+              data-strategy="next-available"
+            >
+              Siguiente cuenta →
+            </button>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="search-wrap">
+            <span aria-hidden="true">⌕</span
+            ><input
+              type="search"
+              id="account-search"
+              aria-label="Buscar cuentas"
+              placeholder="Buscar por alias o correo…"
+            />
+          </div>
+          <select id="account-filter" aria-label="Filtrar cuentas">
+            <option value="all">Todas las cuentas</option>
+            <option value="enabled">En rotación</option>
+            <option value="disabled">Pausadas</option>
+            <option value="warning">Consumo alto</option></select
+          ><select id="account-sort" aria-label="Ordenar cuentas">
+            <option value="active">Activa primero</option>
+            <option value="quota">Mayor cuota disponible</option>
+            <option value="name">Nombre: A–Z</option>
+          </select>
+        </div>
+        <div id="accounts-container" class="accounts-grid" aria-busy="true">
+          <div class="panel skeleton-card"></div>
+          <div class="panel skeleton-card"></div>
+          <div class="panel skeleton-card"></div>
+        </div>
+      </section>
+      <section id="projects" class="section" aria-labelledby="projects-title">
+        <div class="section-top">
+          <div>
+            <p class="eyebrow">RETOMA DONDE LO DEJASTE</p>
+            <h2 id="projects-title">
+              Tus proyectos <span id="projects-count" class="count">0</span>
+            </h2>
+            <p class="muted small">
+              Reanuda el contexto guardado en tu equipo con la cuenta activa.
+            </p>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="search-wrap">
+            <span aria-hidden="true">⌕</span
+            ><input
+              type="search"
+              id="project-search"
+              aria-label="Buscar proyectos"
+              placeholder="Buscar proyecto o ruta…"
+            />
+          </div>
+          <select id="project-filter" aria-label="Filtrar proyectos">
+            <option value="all">Todos los proyectos</option>
+            <option value="favorites">Solo favoritos</option>
+            <option value="available">Carpetas disponibles</option>
+          </select>
+        </div>
+        <div id="projects-grid" class="projects-grid" aria-busy="true"></div>
+        <button id="show-projects" class="button load-more" hidden>
+          Mostrar más proyectos
+        </button>
+      </section>
+      <footer class="footer">
+        <span><strong>claudio</strong> · Hecho para seguir creando.</span
+        ><span
+          >Actualización automática cada 30 s
+          <span class="status-dot online"></span
+        ></span>
+      </footer>
+    </main>
+    <dialog id="link-dialog" aria-labelledby="link-dialog-title">
+      <form id="link-form">
+        <div class="section-top">
+          <div>
+            <p class="eyebrow">NUEVA CONEXIÓN</p>
+            <h2 id="link-dialog-title">Vincular cuenta</h2>
+          </div>
+          <button
+            type="button"
+            class="button subtle close-dialog"
+            aria-label="Cerrar"
+          >
+            ×
+          </button>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Método de vinculación">
+          <button
+            type="button"
+            id="tab-session"
+            role="tab"
+            aria-selected="true"
+            aria-controls="session-panel"
+            tabindex="0"
+            data-tab="session"
+          >
+            Sesión actual</button
+          ><button
+            type="button"
+            id="tab-token"
+            role="tab"
+            aria-selected="false"
+            aria-controls="token-panel"
+            tabindex="-1"
+            data-tab="token"
+          >
+            Token / API key
+          </button>
+        </div>
+        <div id="session-panel" role="tabpanel" aria-labelledby="tab-session">
+          <p class="muted">
+            Guarda la cuenta que tienes conectada en Claude Code.
+          </p>
+          <div class="notice">
+            Para vincular otra cuenta, inicia sesión con
+            <code>claude login</code> y vuelve aquí.
+          </div>
+          <label for="session-alias"
+            >Alias <span class="muted">(opcional)</span></label
+          ><input
+            id="session-alias"
+            placeholder="Por ejemplo: personal o trabajo"
+            maxlength="80"
+          />
+        </div>
+        <div
+          id="token-panel"
+          role="tabpanel"
+          aria-labelledby="tab-token"
+          hidden
+        >
+          <label for="token-value">Token o API key</label>
+          <div class="input-action">
+            <input
+              type="password"
+              id="token-value"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="sk-ant-…"
+            /><button
+              type="button"
+              class="button subtle"
+              id="show-token"
+              aria-label="Mostrar token"
+              aria-pressed="false"
+            >
+              Mostrar
+            </button>
+          </div>
+          <label for="token-email">Correo o identificador</label
+          ><input id="token-email" placeholder="trabajo@empresa.com" /><label
+            for="token-alias"
+            >Alias <span class="muted">(opcional)</span></label
+          ><input id="token-alias" placeholder="Trabajo" maxlength="80" />
+          <p class="muted small">
+            Indica el correo o identificador si quieres asignar un alias.
+          </p>
+        </div>
+        <p class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" class="button close-dialog">Cancelar</button
+          ><button type="submit" class="button primary">Vincular cuenta</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="alias-dialog" aria-labelledby="alias-dialog-title">
+      <form id="alias-form">
+        <div class="section-top">
+          <h2 id="alias-dialog-title">Editar alias</h2>
+          <button
+            type="button"
+            class="button subtle close-dialog"
+            aria-label="Cerrar"
+          >
+            ×
+          </button>
+        </div>
+        <p id="alias-email" class="muted small"></p>
+        <label for="alias-value">Nombre de la cuenta</label
+        ><input
+          id="alias-value"
+          maxlength="80"
+          placeholder="Por ejemplo: trabajo"
+        />
+        <p class="muted small">Deja el campo vacío para quitar el alias.</p>
+        <p class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" class="button close-dialog">Cancelar</button
+          ><button type="submit" class="button primary">Guardar cambios</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="remove-dialog" aria-labelledby="remove-dialog-title">
+      <form id="remove-form">
+        <h2 id="remove-dialog-title">Desvincular cuenta</h2>
+        <p id="remove-description" class="muted"></p>
+        <p class="small">
+          Se quitará de Claudio. Los proyectos y su historial local se
+          conservarán.
+        </p>
+        <p class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" class="button close-dialog" autofocus>
+            Cancelar</button
+          ><button type="submit" class="button danger">Desvincular</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="parallel-dialog" aria-labelledby="parallel-dialog-title">
+      <form id="parallel-form">
+        <div class="section-top">
+          <h2 id="parallel-dialog-title">Sesión paralela</h2>
+          <button
+            type="button"
+            class="button subtle close-dialog"
+            aria-label="Cerrar"
+          >
+            ×
+          </button>
+        </div>
+        <p id="parallel-project" class="muted"></p>
+        <label for="parallel-account">Usar cuenta</label
+        ><select id="parallel-account" required></select>
+        <p class="muted small">
+          Abre una terminal con historial compartido sin cambiar la cuenta
+          global.
+        </p>
+        <p class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" class="button close-dialog">Cancelar</button
+          ><button type="submit" class="button primary">Abrir sesión</button>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>
