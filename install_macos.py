@@ -3,7 +3,6 @@
 from pathlib import Path
 import plistlib
 import shlex
-import shutil
 import struct
 import sys
 
@@ -28,13 +27,8 @@ def install():
     png = (ROOT / 'assets' / 'claudio.png').read_bytes()
     (contents / 'Resources' / 'claudio.icns').write_bytes(
         b'icns' + struct.pack('>I', len(png) + 16) + b'ic09' + struct.pack('>I', len(png) + 8) + png)
-    # Finder starts applications with a minimal PATH, where cswap is usually missing.
-    cswap = shutil.which('cswap')
-    path = ':'.join(([shlex.quote(str(Path(cswap).parent))] if cswap else [])
-                    + ['"$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"'])
     launcher = contents / 'MacOS' / 'Claudio'
-    launcher.write_text(f'#!/bin/sh\nexport PATH={path}\n'
-                        f'exec {shlex.quote(sys.executable)} {shlex.quote(str(ROOT / "desktop.py"))}\n', encoding='utf-8')
+    launcher.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(ROOT / "desktop.py"))}\n', encoding='utf-8')
     launcher.chmod(0o755)
     print(f'Aplicación e icono actualizados: {app}')
 

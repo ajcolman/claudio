@@ -1,5 +1,5 @@
 # Script de instalación para Windows (ejecutar como Administrador)
-# Instala claude-swap y las dependencias de Claudio
+# Instala las dependencias de Claudio y crea su acceso directo
 
 Write-Host "=================================================="
 Write-Host "  Instalador de Claudio para Windows"
@@ -14,16 +14,7 @@ try {
     exit 1
 }
 
-# 2. Instalar claude-swap (el motor backend)
-Write-Host "`n📦 Instalando claude-swap..."
-pip install --upgrade claude-swap
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Error al instalar claude-swap" -ForegroundColor Red
-    exit 1
-}
-Write-Host "✅ claude-swap instalado correctamente"
-
-# 3. Instalar PySide6 para la GUI de escritorio
+# 2. Instalar PySide6 para la GUI de escritorio
 Write-Host "`n📦 Instalando PySide6 (interfaz gráfica nativa)..."
 pip install "PySide6>=6.6"
 if ($LASTEXITCODE -eq 0) {
@@ -32,7 +23,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "⚠️  PySide6 no pudo instalarse. Claudio abrirá en el navegador como alternativa."
 }
 
-# 4. Crear acceso directo en el Escritorio
+# 3. Crear acceso directo en el Escritorio
 $desktopPath = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = Join-Path $desktopPath "Claudio.lnk"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -48,7 +39,7 @@ $Shortcut.Save()
 
 Write-Host "`n✅ Acceso directo creado en el Escritorio: Claudio.lnk"
 
-# 5. Agregar claudio.bat al PATH del usuario (opcional)
+# 4. Agregar claudio.bat al PATH del usuario (opcional)
 $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 if ($userPath -notlike "*$scriptDir*") {
     [Environment]::SetEnvironmentVariable("PATH", "$userPath;$scriptDir", "User")

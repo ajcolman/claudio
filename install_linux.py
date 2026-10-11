@@ -29,7 +29,7 @@ def install():
         f'Exec={desktop_quote(sys.executable)} {desktop_quote(ROOT / "desktop.py")}\n'
         f'Icon={ROOT / "assets/claudio.svg"}\n'
         'Terminal=false\nType=Application\nCategories=Development;Utility;\n'
-        'Keywords=claude;code;cswap;ai;terminal;\nStartupNotify=true\n', encoding='utf-8')
+        'Keywords=claude;code;cuentas;ai;terminal;\nStartupNotify=true\n', encoding='utf-8')
     for command in [('update-desktop-database', str(applications)), ('kbuildsycoca6', '--noincremental')]:
         if shutil.which(command[0]):
             subprocess.run(command, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)

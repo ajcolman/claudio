@@ -14,44 +14,51 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+from accounts.manager import Accounts
+from accounts.rotation import Rotation
+from accounts.sessions import AUTH_OVERRIDES
+
 PORT = 5252
 API_VERSION = 2
 SERVER_REVISION = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
-CSWAP_BIN = shutil.which('cswap') or shutil.which('cswap.exe')
-if not CSWAP_BIN:
-    local_bin = os.path.expanduser('~/.local/bin/cswap')
-    CSWAP_BIN = local_bin if os.path.exists(local_bin) else 'cswap'
 CLAUDE_JSON_PATH = os.path.expanduser('~/.claude.json')
-auto_process = None
-auto_lock = threading.Lock()
 command_lock = threading.Lock()
-auto_config = {'threshold': 90, 'strategy': 'best'}
+services_lock = threading.Lock()
+manager = None
+rotation = None
 
 
-def run_cswap(args, stdin_input='n\n', timeout=15):
-    try:
-        result = subprocess.run([CSWAP_BIN] + args, capture_output=True, text=True,
-                                input=stdin_input, timeout=timeout)
-        return result.returncode, result.stdout.strip(), result.stderr.strip()
-    except subprocess.TimeoutExpired:
-        return 1, '', 'La operación tardó demasiado. Intenta nuevamente.'
-    except FileNotFoundError:
-        return 1, '', 'No se encontró cswap. Instala claude-swap para gestionar tus cuentas.'
-    except OSError as error:
-        return 1, '', str(error)
+def services():
+    """The account manager and its rotation, created on first use."""
+    global manager, rotation
+    with services_lock:
+        if manager is None:
+            manager = Accounts()
+        if rotation is None:
+            rotation = Rotation(manager)
+        return manager, rotation
 
 
-def launch_terminal(argv, cwd=None):
-    """Only receive validated argument lists; quote once at the terminal boundary."""
+def launch_terminal(argv, cwd=None, environment=None):
+    """Only receive validated argument lists; quote once at the terminal boundary.
+
+    `environment` starts the command as another account: its variables are set and
+    the ones that would override the account inside Claude Code are removed.
+    """
     cwd = os.path.abspath(os.path.expanduser(cwd or '~'))
     if not os.path.isdir(cwd):
         return False, 'La carpeta del proyecto ya no está disponible.'
     system = platform.system()
+    if environment and system != 'Windows':
+        argv = ['env'] + [part for name in AUTH_OVERRIDES for part in ('-u', name)] + [f'{name}={value}' for name, value in environment.items()] + argv
     try:
         if system == 'Windows':
             def ps_quote(value):
                 return "'" + value.replace("'", "''") + "'"
             command = '& ' + ' '.join(ps_quote(arg) for arg in argv)
+            if environment:
+                command = ''.join(f'Remove-Item Env:{name} -ErrorAction SilentlyContinue; ' for name in AUTH_OVERRIDES) \
+                    + ''.join(f'$env:{name} = {ps_quote(value)}; ' for name, value in environment.items()) + command
             powershell = shutil.which('pwsh') or shutil.which('powershell.exe') or shutil.which('powershell')
             if not powershell:
                 return False, 'No se encontró PowerShell para abrir la sesión.'
@@ -116,25 +123,15 @@ def get_recent_projects():
 
 
 def get_system_status():
-    data = {}
+    accounts, automatic = services()
     # Serialize with account writes so status and list describe the same operation.
     with command_lock:
-        for key, command in [('status', 'status'), ('list', 'list')]:
-            code, output, error = run_cswap([command, '--json'])
-            if code:
-                return {'success': False, 'error': error or f'No se pudo consultar {command}.'}
-            try:
-                parsed = json.loads(output)
-                if not isinstance(parsed, dict) or parsed.get('success') is False:
-                    raise ValueError()
-                if key == 'list' and not isinstance(parsed.get('accounts'), list):
-                    raise ValueError()
-                data[key] = parsed
-            except (ValueError, TypeError):
-                return {'success': False, 'error': f'cswap devolvió datos inválidos para {command}.'}
-    with auto_lock:
-        data['auto_running'] = auto_process is not None and auto_process.poll() is None
-        data['auto_config'] = auto_config.copy()
+        try:
+            data = accounts.overview()
+        except (RuntimeError, OSError) as error:
+            return {'success': False, 'error': str(error) or 'No se pudo consultar las cuentas.'}
+    data['auto_running'] = automatic.running
+    data['auto_config'] = dict(automatic.config)
     data['projects'] = get_recent_projects()
     return data
 
@@ -163,14 +160,16 @@ def bool_field(payload, key, default=False):
     return value
 
 
-def cswap_result(args, stdin_input='n\n'):
-    code, output, error = run_cswap(args, stdin_input=stdin_input)
-    return {'success': code == 0, 'output': output,
-            'error': (error or output or 'No se pudo completar la operación.') if code else None}
+def account_result(action, *arguments, **options):
+    """Run an account operation; problems the user can act on become its error message."""
+    try:
+        return {'success': True, 'output': action(*arguments, **options), 'error': None}
+    except RuntimeError as error:
+        return {'success': False, 'output': '', 'error': str(error) or 'No se pudo completar la operación.'}
 
 
 def toggle_auto(payload):
-    global auto_process
+    automatic = services()[1]
     enable = bool_field(payload, 'enable', True)
     threshold = payload.get('threshold', 90)
     strategy = payload.get('strategy', 'best')
@@ -178,47 +177,27 @@ def toggle_auto(payload):
         raise ValueError('El umbral debe ser un entero entre 70 y 98 %.')
     if strategy not in ('best', 'consume-first'):
         raise ValueError('Estrategia de rotación no válida.')
-    with auto_lock:
-        running = auto_process is not None and auto_process.poll() is None
-        if enable:
-            if running and (threshold != auto_config['threshold'] or strategy != auto_config['strategy']):
-                raise ValueError('Detén la rotación antes de cambiar su configuración.')
-            if not running:
-                process = subprocess.Popen([CSWAP_BIN, 'auto', '--threshold', str(threshold), '--strategy', strategy],
-                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                try:
-                    process.wait(timeout=0.25)
-                except subprocess.TimeoutExpired:
-                    pass
-                else:
-                    return {'success': False, 'error': 'La rotación no pudo iniciarse. Revisa las cuentas y la instalación de cswap.'}
-                auto_process = process
-                auto_config.update(threshold=threshold, strategy=strategy)
-        elif running:
-            auto_process.terminate()
-            try:
-                auto_process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                auto_process.kill()
-                auto_process.wait(timeout=2)
-            auto_process = None
-        return {'success': True, 'auto_running': auto_process is not None and auto_process.poll() is None,
-                'auto_config': auto_config.copy()}
+    if enable:
+        if automatic.running and automatic.config != {'threshold': threshold, 'strategy': strategy}:
+            raise ValueError('Detén la rotación antes de cambiar su configuración.')
+        if not automatic.running:
+            automatic.start(threshold, strategy)
+    else:
+        automatic.stop()
+    return {'success': True, 'auto_running': automatic.running, 'auto_config': dict(automatic.config)}
 
 
 def perform_action(path, payload):
+    accounts = services()[0]
     if path == '/api/switch':
         strategy = payload.get('strategy')
         if strategy is not None:
             if strategy not in ('best', 'next-available', 'consume-first'):
                 raise ValueError('Estrategia no válida.')
-            args = ['--strategy', strategy]
-        else:
-            args = [account_field(payload, 'target')]
-        return cswap_result(['switch'] + args + ['--json'])
+            return account_result(accounts.switch, strategy=strategy)
+        return account_result(accounts.switch, account_field(payload, 'target'))
     if path == '/api/add-current':
-        alias = string_field(payload, 'alias', max_length=80)
-        return cswap_result(['add'] + (['--alias', alias] if alias else []), stdin_input='y\n')
+        return account_result(accounts.link_current, string_field(payload, 'alias', max_length=80))
     if path == '/api/add-token':
         token = string_field(payload, 'token', required=True, max_length=16384)
         if '\n' in token or '\r' in token:
@@ -227,27 +206,14 @@ def perform_action(path, payload):
         alias = string_field(payload, 'alias', max_length=80)
         if alias and not email:
             raise ValueError('Indica el correo o identificador para asignar el alias.')
-        args = ['add-token', '-'] + (['--email', email] if email else [])
-        if payload.get('slot') is not None:
-            args += ['--slot', account_field(payload, 'slot')]
-        result = cswap_result(args, stdin_input=token + '\n')
-        # Never return a secret even if a CLI error includes the input.
-        for key in ('output', 'error'):
-            if result.get(key):
-                result[key] = result[key].replace(token, '[token oculto]')
-        if result['success'] and alias:
-            alias_result = cswap_result(['alias', email, alias])
-            if not alias_result['success']:
-                result['warning'] = 'Cuenta vinculada, pero no se pudo guardar el alias. Puedes editarlo desde su tarjeta.'
-        return result
+        slot = account_field(payload, 'slot') if payload.get('slot') is not None else None
+        return account_result(accounts.link_token, token, email, slot, alias)
     if path == '/api/remove':
-        return cswap_result(['remove', account_field(payload)], stdin_input='y\n')
+        return account_result(accounts.remove, account_field(payload))
     if path == '/api/toggle-account':
-        return cswap_result(['disable' if bool_field(payload, 'disable') else 'enable', account_field(payload)])
+        return account_result(accounts.set_disabled, account_field(payload), bool_field(payload, 'disable'))
     if path == '/api/alias':
-        account = account_field(payload)
-        alias = string_field(payload, 'alias', max_length=80)
-        return cswap_result(['alias', account, alias] if alias else ['alias', account, '--unset'])
+        return account_result(accounts.set_alias, account_field(payload), string_field(payload, 'alias', max_length=80))
     if path == '/api/toggle-auto':
         return toggle_auto(payload)
     if path == '/api/open-terminal':
@@ -258,10 +224,13 @@ def perform_action(path, payload):
         if mode not in ('new', 'resume', 'parallel'):
             raise ValueError('Selecciona un modo de terminal válido.')
         cwd = string_field(payload, 'cwd') or None
-        argv = ['claude'] + (['--resume'] if mode == 'resume' else [])
+        environment = None
         if mode == 'parallel':
-            argv = [CSWAP_BIN, 'run', account_field(payload), '--share-history', '--', '--resume']
-        ok, error = launch_terminal(argv, cwd)
+            try:
+                environment = accounts.session(account_field(payload))
+            except RuntimeError as error:
+                return {'success': False, 'error': str(error)}
+        ok, error = launch_terminal(['claude'] + ([] if mode == 'new' else ['--resume']), cwd, environment)
         return {'success': ok, 'error': error}
     return None
 
@@ -348,9 +317,8 @@ def run():
     except KeyboardInterrupt:
         pass
     finally:
-        with auto_lock:
-            if auto_process and auto_process.poll() is None:
-                auto_process.terminate()
+        if rotation is not None:
+            rotation.stop()
         server.server_close()
 
 

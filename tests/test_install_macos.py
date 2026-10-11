@@ -23,7 +23,7 @@ class InstallMacosTests(unittest.TestCase):
         self.home = Path(temporary.name)
         self.python = self.stand_in("it's python/python3")
 
-    def stand_in(self, name, body='printf \'%s\\n\' "$0" "$PATH" "$@"'):
+    def stand_in(self, name, body='printf \'%s\\n\' "$0" "$@"'):
         """An executable that reports how it was started instead of opening a window."""
         target = self.home / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -31,8 +31,8 @@ class InstallMacosTests(unittest.TestCase):
         target.chmod(0o755)
         return target
 
-    def install(self, path='/usr/bin:/bin'):
-        with patch.dict(os.environ, {'HOME': str(self.home), 'PATH': path}), patch.object(sys, 'executable', str(self.python)), redirect_stdout(io.StringIO()):
+    def install(self):
+        with patch.dict(os.environ, {'HOME': str(self.home)}), patch.object(sys, 'executable', str(self.python)), redirect_stdout(io.StringIO()):
             install_macos.install()
         return self.home / 'Applications' / 'Claudio.app' / 'Contents'
 
@@ -41,24 +41,13 @@ class InstallMacosTests(unittest.TestCase):
         info = plistlib.loads((contents / 'Info.plist').read_bytes())
         result = subprocess.run([str(contents / 'MacOS' / info['CFBundleExecutable'])], env={'PATH': '/usr/bin:/bin', 'HOME': str(self.home)},
                                 capture_output=True, text=True, timeout=10)
-        python, path, *arguments = result.stdout.splitlines()
-        return python, path.split(':'), arguments
+        python, *arguments = result.stdout.splitlines()
+        return python, arguments
 
     def test_app_opens_the_desktop_window_with_the_installing_python(self):
-        python, _, arguments = self.start_app(self.install())
+        python, arguments = self.start_app(self.install())
         self.assertEqual(python, str(self.python))
         self.assertEqual(arguments, [str(ROOT / 'desktop.py')])
-
-    def test_app_reaches_cswap_installed_outside_the_finder_path(self):
-        cswap = self.stand_in('tools/cswap')
-        _, path, _ = self.start_app(self.install(path=f'{cswap.parent}:/usr/bin:/bin'))
-        self.assertIn(str(cswap.parent), path)
-
-    def test_app_searches_the_usual_install_folders_and_keeps_the_system_path(self):
-        _, path, _ = self.start_app(self.install())
-        for folder in [f'{self.home}/.local/bin', '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']:
-            with self.subTest(folder=folder):
-                self.assertIn(folder, path)
 
     def test_bundle_icon_is_an_icns_wrapping_the_512px_logo(self):
         contents = self.install()
@@ -79,7 +68,7 @@ class InstallMacosTests(unittest.TestCase):
     def test_reinstalling_switches_the_app_to_the_new_python(self):
         self.install()
         self.python = self.stand_in('venv/bin/python3')
-        python, _, _ = self.start_app(self.install())
+        python, _ = self.start_app(self.install())
         self.assertEqual(python, str(self.python))
 
     @unittest.skipIf(sys.platform == 'darwin', 'En macOS el instalador sí debe ejecutarse.')

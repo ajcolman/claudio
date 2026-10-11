@@ -17,5 +17,5 @@ case "${1:-}" in
     else
       exec python3 "$PROJECT_DIR/server.py"
     fi ;;
-  *) exec cswap "$@" ;;
+  *) echo "Uso: claudio [desktop|web]" >&2; exit 2 ;;
 esac

@@ -33,7 +33,7 @@ except ImportError:
 
 def is_server_running():
     try:
-        # Startup must not wait for remote account usage or require cswap.
+        # Startup must not wait for remote account usage.
         with urllib.request.urlopen(f'{SERVER_URL}/api/health', timeout=1) as response:
             data = json.load(response)
             return (data.get('app') == 'claudio' and data.get('api_version') == API_VERSION

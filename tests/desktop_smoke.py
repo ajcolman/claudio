@@ -1,4 +1,4 @@
-"""Headless Qt integration with fictitious data; never runs cswap or writes user settings."""
+"""Headless Qt integration with fictitious data; never touches accounts or writes user settings."""
 import json
 import os
 import sys
